@@ -10,7 +10,8 @@ name: New-term radar
 # (Settings > Secrets and variables > Actions > Variables), add the secret AISA_API_KEY,
 # and commit your config.json (remove it from .gitignore first; it holds no secrets).
 # Optional secrets: GOANYAPI_API_KEY (related queries in the keyword table),
-# RESEND_API_KEY, EMAIL_FROM, RADAR_EMAIL_TO (mail the reports),
+# TRUSTMRR_API_KEY (verified revenue leads), RESEND_API_KEY, EMAIL_FROM,
+# RADAR_EMAIL_TO (mail the reports),
 # GSC_TOKEN_JSON (the Search Console signal).
 #
 # State (state/radar.db and the snapshots) lives in the Actions cache: one entry per
@@ -63,6 +64,7 @@ jobs:
         env:
           AISA_API_KEY: ${{ secrets.AISA_API_KEY }}
           GOANYAPI_API_KEY: ${{ secrets.GOANYAPI_API_KEY }}
+          TRUSTMRR_API_KEY: ${{ secrets.TRUSTMRR_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
           GSC_TOKEN_JSON: ${{ secrets.GSC_TOKEN_JSON }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}

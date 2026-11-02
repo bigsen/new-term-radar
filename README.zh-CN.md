@@ -419,7 +419,7 @@ DeepSeek Harness 不会把环境里像密钥的变量传给服务器，所以 ke
 
 1. Fork 这个仓库（私有 fork 也可以）。
 2. 把 `config.json` 从 `.gitignore` 里删掉，提交你的配置。配置里没有任何密钥。
-3. 添加 secret `AISA_API_KEY`；可选 `GOANYAPI_API_KEY`、`RESEND_API_KEY`、`EMAIL_FROM`、`RADAR_EMAIL_TO`、`GSC_TOKEN_JSON`。
+3. 添加 secret `AISA_API_KEY`；可选 `GOANYAPI_API_KEY`、`TRUSTMRR_API_KEY`、`RESEND_API_KEY`、`EMAIL_FROM`、`RADAR_EMAIL_TO`、`GSC_TOKEN_JSON`。
 4. 把仓库变量 `RADAR_ENABLED` 设为 `true`。
 
 ## 各部分怎么判断

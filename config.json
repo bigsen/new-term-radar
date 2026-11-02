@@ -110,7 +110,7 @@
   ],
   "stop_words": [],
   "judge": {
-    "model": "gpt-4.1-mini",
+    "model": "deepseek-v4.1-flash",
     "min_score": 0.5
   },
   "breakout": {
@@ -201,7 +201,7 @@
   },
   "usecases": {
     "per_day": 5,
-    "model": "claude-sonnet-4-6",
+    "model": "deepseek-v4.1-flash",
     "benchmark": "gpts",
     "min_volume": 50,
     "min_daily": 300,
@@ -210,6 +210,18 @@
     "country_trends": true,
     "country_min_volume": 1000,
     "country_max": 8
+  },
+  "asks": {
+    "model": "deepseek-v4.1-flash"
+  },
+  "pains": {
+    "model": "deepseek-v4.1-flash"
+  },
+  "tutorials": {
+    "model": "deepseek-v4.1-flash"
+  },
+  "sellers": {
+    "model": "deepseek-v4.1-flash"
   },
   "gsc": {}
 }
