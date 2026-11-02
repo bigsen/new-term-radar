@@ -506,6 +506,17 @@ def _serp(sv: dict | None) -> str:
     return " · ".join(bits)
 
 
+def _opp_bool(r: dict, key: str) -> str:
+    if key not in r or r.get(key) is None:
+        return t("dash")
+    return t("uc_yes" if r[key] else "uc_no")
+
+
+def _decay(r: dict) -> str:
+    value = r.get("decay_risk")
+    return t("uc_decay_" + value) if value in opportunity.DECAY_RANK else t("dash")
+
+
 def _extra_lines(cfg: dict, uc: dict) -> list[str]:
     """Under the table: what the three extra columns mean, #1 and #2 of the prioritized rows, failures."""
     rows = uc["rows"]
@@ -637,7 +648,7 @@ def keyword_table(cfg: dict, uc: dict) -> list[str]:
     lines += [t("uc_intro", names=", ".join(uc["names"]), proposed=uc["proposed"], relevant=uc["relevant"], kept=uc["kept"], min=c["min_volume"],
                 month=uc["volume_month"] or "?"),
               t("uc_bench", bench=uc["benchmark"], bench_daily=uc["bench_daily"]) if uc.get("bench_daily") else t("uc_bench_none", bench=uc["benchmark"]), "",
-              t("uc_cols", bench=uc["benchmark"]), "|" + "---|" * 16]
+              t("uc_cols", bench=uc["benchmark"]), "|" + "---|" * 20]
     for r in uc["rows"]:
         generic = r["kind"] == "generic"
         none = r.get("no_data")
@@ -652,8 +663,11 @@ def keyword_table(cfg: dict, uc: dict) -> list[str]:
             f"{t('uc_now_none') if none else t('uc_now_' + r['now'])}{' (' + uc['geo'] + ')' if r.get('trend_geo') else ''} | "
             f"{_year(r.get('year'))} | {_age(r)} | {_markets(r.get('markets'))} | "
             f"{_page_one(r.get('competition'))} | {_serp(r.get('serp'))} | "
+            f"{_opp_bool(r, 'can_charge')} | {_opp_bool(r, 'manual_workflow')} | {_opp_bool(r, 'online_gap')} | {_decay(r)} | "
             f"{t('uc_' + r['decision'])}{' ↓' if r.get('demoted') else ''}{_yours(r.get('yours'))} |")
     lines += ["", t("uc_rules", min_daily=c["min_daily"])]
+    if any(any(k in r for k in opportunity.OPPORTUNITY_FIELDS) for r in uc["rows"]):
+        lines.append(t("uc_opp_note"))
     lines += _page_one_lines(cfg, uc)
     lines += _extra_lines(cfg, uc)
     lines += _more_lines(cfg, uc)

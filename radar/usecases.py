@@ -65,7 +65,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from pathlib import Path
 
-from . import UA, aisa, competition, curve, dotcom, goanyapi, markets, review, serpshape, snap, wordage, yours
+from . import UA, aisa, competition, curve, dotcom, goanyapi, markets, opportunity, review, serpshape, snap, wordage, yours
 
 POSTS_KEPT = 12
 POST_CHARS = 400
@@ -111,6 +111,37 @@ def due(names: list[str], seen: dict[str, dict], today: date, per_day: int, rech
     cutoff = (today - timedelta(days=recheck_days)).isoformat()
     again = sorted((n for n, s in seen.items() if s["runs"] == 1 and s["first"] <= cutoff), key=lambda n: seen[n]["first"])
     return list(dict.fromkeys(new + again))[:per_day]
+
+
+
+def opp_bool(value) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str) and value.lower() in ("true", "false"):
+        return value.lower() == "true"
+    return None
+
+
+def opp_fields(item: dict) -> dict:
+    """The model's four opportunity calls, normalized; unknown keys are left out."""
+    out = {}
+    for key in opportunity.OPPORTUNITY_BOOLS:
+        value = opp_bool(item.get(key))
+        if value is not None:
+            out[key] = value
+    decay = str(item.get("decay_risk", "")).lower()
+    if decay in opportunity.DECAY_RANK:
+        out["decay_risk"] = decay
+    return out
+
+
+def apply_opportunity(row: dict, source: dict) -> dict:
+    """Fill missing opportunity fields on a keyword row from its evidence."""
+    tagged = opportunity.tag(dict(source))
+    for key in opportunity.OPPORTUNITY_FIELDS:
+        if key in tagged:
+            row.setdefault(key, tagged[key])
+    return row
 
 
 def _readme(repo: str) -> str:
@@ -167,7 +198,8 @@ def parse(answer: str, name: str) -> list[dict]:
         if not 2 <= len(phrase.split()) <= 5 or name in phrase or phrase in seen:
             continue
         seen.add(phrase)
-        out.append({"phrase": phrase, "evidence": " ".join(str(it.get("evidence", "")).split())[:160], "brand": bool(it.get("brand"))})
+        out.append({"phrase": phrase, "evidence": " ".join(str(it.get("evidence", "")).split())[:160], "brand": bool(it.get("brand")),
+                    **opp_fields(it)})
     return out[:MAX_PER_NAME]
 
 
@@ -181,7 +213,7 @@ def propose(model: str, name: str, ev: dict) -> list[dict]:
 
 SCREEN = (
     "You check keyword candidates for an SEO researcher. NAME is a new model, product or repository; EVIDENCE is what "
-    "people posted about it. For each candidate keyword give three things.\n"
+    "people posted about it. For each candidate keyword give these things.\n"
     "`score`, 0.0 to 1.0: how well NAME answers that search. Would someone who typed the keyword be served by a page "
     "about using NAME for it? High: the keyword names the main job NAME does, as the evidence shows it ('ai image "
     "detector' for a tool that tells whether an image is AI-made; 'photoshop alternative' for a free clone of that "
@@ -195,8 +227,18 @@ SCREEN = (
     "`established`, true or false: only when `name` is true. True when you know that product to have existed for a "
     "year or more ('premiere pro', 'davinci resolve', 'adobe lightroom', 'google gemini'); false when it is new or "
     "you do not know it.\n"
+    "`can_charge`, true or false: the evidence suggests someone would pay to use NAME for this job, not just "
+    "read a free page (a subscription, credits, API, license or a costly manual job worth automating).\n"
+    "`manual_workflow`, true or false: the evidence shows people doing this job by hand, following a tutorial, "
+    "copying prompts, running a local script, or chasing a trend.\n"
+    "`online_gap`, true or false: the evidence points to a local tool, script, prompt recipe, download or manual "
+    "workflow for this exact job, with no obvious usable online product named in the evidence. Do not mark a gap "
+    "just because NAME is new; mark it only when the evidence itself shows the missing online form.\n"
+    "`decay_risk`, low, medium or high: high for a meme, viral moment, model release or other short-lived trend; "
+    "medium when the evidence is too thin to tell; low for a durable repeated job.\n"
     "Answer with JSON only, one object per candidate, in the same order: "
-    "[{\"i\": 0, \"score\": 0.9, \"brand\": false, \"name\": false, \"established\": false}, ...]"
+    "[{\"i\": 0, \"score\": 0.9, \"brand\": false, \"name\": false, \"established\": false, "
+    "\"can_charge\": true, \"manual_workflow\": true, \"online_gap\": true, \"decay_risk\": \"low\"}, ...]"
 )
 RELEVANT_MIN = 0.6
 RELATED_KEPT = 12          # related queries per name that go to the screen
@@ -228,15 +270,15 @@ def split_related(name: str, related: dict[str, list[str]]) -> tuple[list[str], 
 
 def screen(model: str, name: str, ev: dict, cands: list[dict]) -> list[dict]:
     """The candidates with the model's view of each: `relevance`, `brand` (added to what
-    the proposer said), `is_name`. A failed call returns them as they came, unscored: the
-    screen narrows the table, it never empties it."""
+    the proposer said), `is_name`, and the four opportunity fields. A failed call returns
+    them as they came, unscored: the screen narrows the table, it never empties it."""
     if not cands:
         return []
     posts = "\n".join(f"- ({p['likes']} likes) @{p['by']}: {p['text'][:POST_CHARS]}" for p in ev["posts"][:6])
     user = f"NAME: {name}\n\nEVIDENCE:\n{posts or ev['readme'][:1200]}\n\nCANDIDATES:\n" + json.dumps(
         [{"i": i, "keyword": c["phrase"]} for i, c in enumerate(cands)], ensure_ascii=False)
     try:
-        answer = aisa.chat(model, SCREEN, user, max_tokens=600)
+        answer = aisa.chat(model, SCREEN, user, max_tokens=1200)
     except aisa.AisaError:
         return cands
     m = re.search(r"\[.*\]", answer, re.S)
@@ -249,7 +291,7 @@ def screen(model: str, name: str, ev: dict, cands: list[dict]) -> list[dict]:
         v = views.get(i)
         try:
             out.append(dict(c, relevance=float(v["score"]), brand=c["brand"] or bool(v.get("brand")), is_name=bool(v.get("name")),
-                            established=bool(v.get("established")))
+                            established=bool(v.get("established")), **opp_fields(v))
                        if v else c)
         except (KeyError, TypeError, ValueError):
             out.append(c)
@@ -499,6 +541,7 @@ def run(cfg: dict, state: Path, names: list[str], repos: dict[str, str], today: 
     asked, c0 = 0, 0
     tails: dict[str, list[str]] = {}
     cosearch: list[dict] = []
+    name_opp: dict[str, dict] = {}
     related_errors: list[str] = []
     use_related = bool(goanyapi.key()) and c.get("related", True)
     for name in todo:
@@ -515,11 +558,14 @@ def run(cfg: dict, state: Path, names: list[str], repos: dict[str, str], today: 
             cands += [u for u in searched if u["phrase"] not in have]
         asked += len(cands)
         viewed = screen(c["model"], name, ev[name], cands)
+        kept = relevant(viewed)
+        name_opp[name] = opportunity.merge(*kept)
         cosearch += other_names(name, viewed, todo)
-        for u in relevant(viewed):
+        for u in kept:
             row = proposed.setdefault(u["phrase"], {**u, "term": u["phrase"], "kind": "generic", "names": []})
             row["names"].append(name)
             row["brand"] |= u["brand"]
+            row.update(opportunity.merge(row, u))
             if u["source"] == "searched":
                 row["source"] = "searched"
     bench = c["benchmark"].lower()
@@ -527,6 +573,13 @@ def run(cfg: dict, state: Path, names: list[str], repos: dict[str, str], today: 
     generic = sorted((dict(r, **vol[p]) for p, r in proposed.items() if vol.get(p, {}).get("volume", 0) >= c["min_volume"]),
                      key=lambda r: -r["volume"])[:c["trends_max"]]
     rows = [{"term": n, "phrase": n, "kind": "name", "names": [], "brand": True, "evidence": "", **vol.get(n, {})} for n in todo] + generic
+    for r in rows:
+        if r["kind"] == "name":
+            source = {"term": r["phrase"], "examples": [ev[r["phrase"]]["readme"]], "posts": ev[r["phrase"]]["posts"]}
+            apply_opportunity(r, source)
+            r.update(name_opp.get(r["phrase"], {}))
+        else:
+            apply_opportunity(r, {"term": r["phrase"], "examples": [r.get("evidence", "")]})
     series, c3 = fetch_series([r["phrase"] for r in rows], bench, today)
     local, c4, local_errors = country_series(rows, c) if goanyapi.key() and c.get("country_trends", True) else ({}, 0, [])
     daily = measure(rows, series, c["min_daily"], today, local)

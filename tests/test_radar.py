@@ -1173,6 +1173,31 @@ def test_one_click_needs_a_tutorial_people_shared():
     assert opportunity.one_click(_posts(("everyone is making these figurines", 4200))) == "trend"
 
 
+def test_opportunity_fields_read_paid_manual_gap_and_decay():
+    lead = opportunity.tag({"term": "clipforge", "posts": _posts(
+        ("this is a paid subscription workflow, $40/month", 2000),
+        ("here's how to do it manually with a local script and prompt", 1800),
+        ("this viral effect has no online tool yet", 1500))})
+    assert lead["can_charge"] and lead["manual_workflow"] and lead["online_gap"]
+    assert lead["decay_risk"] == "high"
+
+
+def test_opportunity_merge_takes_yes_and_the_riskiest_decay():
+    assert opportunity.merge(
+        {"can_charge": False, "manual_workflow": False, "online_gap": False, "decay_risk": "low"},
+        {"can_charge": True, "online_gap": True, "decay_risk": "high"}) == {
+            "can_charge": True, "manual_workflow": False, "online_gap": True, "decay_risk": "high"}
+
+
+def test_screen_keeps_model_opportunity_fields(monkeypatch):
+    cands = [{"phrase": "ai dance video generator", "brand": False, "source": "model"}]
+    monkeypatch.setattr(usecases.aisa, "chat", lambda *a, **k: json.dumps([
+        {"i": 0, "score": 0.9, "brand": False, "name": False, "established": False,
+         "can_charge": True, "manual_workflow": True, "online_gap": True, "decay_risk": "high"}]))
+    out = usecases.screen("m", "dancecraft", {"posts": [], "readme": ""}, cands)[0]
+    assert out["can_charge"] and out["manual_workflow"] and out["online_gap"] and out["decay_risk"] == "high"
+
+
 def test_leads_carry_format_marks_and_the_legend(cfg, monkeypatch):
     monkeypatch.setattr(report.judge, "score", lambda rows, model: {"judged": len(rows)})
     blocks = {"x": {"terms": [{"term": "clipforge", "recent": 2, "note": "X", "examples": ["@a: clipforge animates any photo"],
@@ -1927,12 +1952,12 @@ def test_keyword_table_shows_age_markets_and_shape_in_both_languages(cfg, tmp_pa
     text = "\n".join(report.keyword_table(cfg, uc))
     week = (TODAY - timedelta(days=42)).isoformat()
     assert f"| {week} 🆕 | **best US** · US 1.5k · DE 1.5k |" in text
-    assert "contested · 1 home / 2 inner · 1 platform · exact-match homepage | **prioritize** |" in text
+    assert "contested · 1 home / 2 inner · 1 platform · exact-match homepage | no | no | no | medium | **prioritize** |" in text
     assert "#1 [Free AI image checker](https://synthid-detector.example/)" in text and "First searched = the first week" in text
-    assert text.splitlines()[text.splitlines().index(next(x for x in text.splitlines() if x.startswith("| Keyword")))].count("|") == 17
+    assert text.splitlines()[text.splitlines().index(next(x for x in text.splitlines() if x.startswith("| Keyword")))].count("|") == 21
     i18n.set_lang("zh")
     zh = "\n".join(report.keyword_table(cfg, uc))
-    assert "| 首次有搜索 | 市场(月搜/KD) | 首页竞争 | 首页结构 | 决策 |" in zh and "有争夺 · 1 首页 / 2 内页 · 1 平台" in zh
+    assert "| 首次有搜索 | 市场(月搜/KD) | 首页竞争 | 首页结构 | 能收费 | 手动流程 | 在线缺口 | 衰减风险 | 决策 |" in zh and "有争夺 · 1 首页 / 2 内页 · 1 平台" in zh
     assert f"{week} 🆕 | **最佳 US**" in zh and "首次有搜索 = 近 5 年里" in zh
 
 
